@@ -1,0 +1,80 @@
+site_name: Logarys Documentation
+site_description: Documentation for the Logarys realtime logs and pipeline management platform
+site_url: https://docs.logarys.local
+repo_url: https://github.com/your-org/logarys
+repo_name: GitHub
+copyright: Copyright &copy; Logarys
+
+theme:
+  name: material
+  language: en
+  logo: assets/logo.svg
+  favicon: assets/logo-64x64.png
+  custom_dir: overrides
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+
+extra_css:
+  - assets/stylesheets/logarys.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra:
+  generator: false
+  homepage: https://logarys.local
+  social:
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/u/logarys
+      name: Docker Hub
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/logarys
+      name: GitHub
+
+nav:
+  - Home: index.md
+  - Installation:
+      - Docker Compose mono server: install/docker-compose.md
+      - Kubernetes: install/kubernetes.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Containers: architecture/containers.md
+  - Maintenance:
+      - Best practices: maintenance/best-practices.md
+  - Security:
+      - User management: security/user-management.md
+  - Query:
+      - RSQL documentation: query/rsql.md
+  - Pipelines:
+      - Overview: pipelines/overview.md
+      - Configuration parameters: pipelines/configuration.md
+      - UI access: pipelines/ui-access.md
+  - Contributing: contributing.md

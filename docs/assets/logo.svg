@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="420"
+   height="420"
+   viewBox="0 0 52.5 52.5"
+   role="img"
+   aria-label="Logo téléscope"
+   version="1.1"
+   id="svg24"
+   sodipodi:docname="logo.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs28" />
+  <sodipodi:namedview
+     id="namedview26"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="1.4951745"
+     inkscape:cx="237.09606"
+     inkscape:cy="266.18966"
+     inkscape:window-width="1852"
+     inkscape:window-height="1017"
+     inkscape:window-x="68"
+     inkscape:window-y="26"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg24" />
+  <g
+     id="g926"
+     transform="translate(-5.75,-5.75)">
+    <circle
+       cx="32"
+       cy="32"
+       r="26"
+       fill="#062b55"
+       id="circle2" />
+    <g
+       transform="matrix(0.76385174,-0.40614718,0.40614718,0.76385174,-6.6477087,23.702)"
+       id="g10"
+       style="fill:#ffffff">
+      <rect
+         x="17.799999"
+         y="23"
+         width="22.5"
+         height="9"
+         rx="1.2"
+         id="rect4" />
+      <rect
+         x="40.400002"
+         y="21.6"
+         width="8.1999998"
+         height="11.8"
+         rx="1.1"
+         id="rect6" />
+      <rect
+         x="12.8"
+         y="25"
+         width="5.1999998"
+         height="5.1999998"
+         rx="0.80000001"
+         id="rect8" />
+    </g>
+    <circle
+       cx="30"
+       cy="35"
+       r="3.2"
+       id="circle12"
+       style="fill:#ffffff" />
+    <path
+       d="m 28.85,37.4 h 2.538279 V 48.868232 H 28.85 Z"
+       id="path14"
+       style="fill:#ffffff;stroke-width:0.901226" />
+    <path
+       d="m 28.8,37.5 -8,13.1 2.8,1.6 7.3,-13.1 z"
+       id="path16"
+       style="fill:#ffffff" />
+    <path
+       d="m 31.2,37.5 8,13.1 -2.8,1.6 -7.3,-13.1 z"
+       id="path18"
+       style="fill:#ffffff" />
+    <path
+       d="m 46,15.2 1.25,3.05 3.05,1.25 -3.05,1.25 L 46,23.8 44.75,20.75 41.7,19.5 44.75,18.25 Z"
+       id="path20"
+       style="fill:#ffffff" />
+    <path
+       d="m 17.550033,22.402763 0.809011,1.973987 1.973987,0.809011 -1.973987,0.809011 -0.809011,1.973987 -0.809011,-1.973987 -1.973987,-0.809011 1.973987,-0.809011 z"
+       id="path20-3"
+       style="fill:#ffffff;stroke-width:0.647209" />
+    <path
+       d="m 31.590564,11.906533 0.800375,1.952915 1.952915,0.800375 -1.952915,0.800375 -0.800375,1.952915 -0.800375,-1.952915 -1.952915,-0.800375 1.952915,-0.800375 z"
+       id="path20-6"
+       style="fill:#ffffff;stroke-width:0.6403" />
+  </g>
+</svg>

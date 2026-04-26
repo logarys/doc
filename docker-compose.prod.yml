@@ -1,0 +1,19 @@
+services:
+  docs-build:
+    image: squidfunk/mkdocs-material:latest
+    working_dir: /docs
+    volumes:
+      - ./:/docs
+    command: build --clean
+
+  docs:
+    image: caddy:2-alpine
+    container_name: logarys-docs-static
+    ports:
+      - "8080:80"
+    volumes:
+      - ./site:/usr/share/caddy:ro
+    restart: unless-stopped
+    depends_on:
+      docs-build:
+        condition: service_completed_successfully
