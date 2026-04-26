@@ -1,6 +1,6 @@
 # RSQL documentation
 
-Logarys uses an RSQL-style syntax to filter logs through the Query API.
+Logarys uses an RSQL-style syntax to filter logs through the Console Manager API.
 
 ## Basic syntax
 

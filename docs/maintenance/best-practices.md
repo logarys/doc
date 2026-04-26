@@ -3,7 +3,7 @@
 ## Use fixed image tags
 
 ```yaml
-image: logarys/query-api:0.1.0
+image: logarys/console-manager:0.1.0
 ```
 
 Avoid `latest` in production.

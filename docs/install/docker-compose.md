@@ -11,6 +11,17 @@ This page describes a complete single-server Logarys deployment using Docker Com
 - SSD storage recommended
 - A reverse proxy for production HTTPS
 
+## Official Logarys images
+
+The current public Logarys Docker Hub namespace exposes four application images:
+
+| Image | Role |
+|---|---|
+| `logarys/ui` | Web user interface |
+| `logarys/console-manager` | UI API, users, configuration, pipelines, and log query endpoints |
+| `logarys/storage-manager` | NATS JetStream to MongoDB storage manager |
+| `logarys/ingestor` | NestJS log ingestion service publishing to NATS JetStream |
+
 ## Deployment layout
 
 | Service | Purpose |
@@ -19,8 +30,7 @@ This page describes a complete single-server Logarys deployment using Docker Com
 | `mongodb` | Persistent document database |
 | `ingestor` | Log entrypoint |
 | `storage-manager` | Consumes broker messages and writes logs |
-| `query-api` | Exposes read/query endpoints |
-| `console-manager` | Exposes admin/configuration endpoints |
+| `console-manager` | Exposes UI API, admin/configuration, users, pipelines, and log querying |
 | `ui` | Web console |
 
 ## Example `docker-compose.yml`
@@ -79,27 +89,17 @@ services:
       - mongodb
     restart: unless-stopped
 
-  query-api:
-    image: logarys/query-api:latest
-    environment:
-      APP_HOST: "0.0.0.0"
-      APP_PORT: "3001"
-      MONGODB_URL: "mongodb://mongodb:27017/logarys"
-      LOGS_DB_NAME: "logarys"
-    depends_on:
-      - mongodb
-    ports:
-      - "3001:3001"
-    restart: unless-stopped
-
   console-manager:
     image: logarys/console-manager:latest
     environment:
       APP_HOST: "0.0.0.0"
       APP_PORT: "3002"
       MONGODB_URL: "mongodb://mongodb:27017/logarys"
+      NATS_URL: "nats://nats:4222"
+      LOGS_DB_NAME: "logarys"
       JWT_SECRET: "change-me"
     depends_on:
+      - nats
       - mongodb
     ports:
       - "3002:3002"
@@ -108,10 +108,8 @@ services:
   ui:
     image: logarys/ui:latest
     environment:
-      PUBLIC_QUERY_API_URL: "http://localhost:3001"
       PUBLIC_CONSOLE_API_URL: "http://localhost:3002"
     depends_on:
-      - query-api
       - console-manager
     ports:
       - "8080:80"
@@ -141,7 +139,6 @@ docker compose logs -f
 |---|---|
 | UI | `http://localhost:8080` |
 | Ingestor | `http://localhost:3000` |
-| Query API | `http://localhost:3001` |
 | Console Manager | `http://localhost:3002` |
 | NATS monitoring | `http://localhost:8222` |
 

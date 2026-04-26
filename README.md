@@ -6,9 +6,9 @@ The documentation is built with **MkDocs Material** and can be served locally wi
 
 ## Links
 
-- Docker Hub: https://hub.docker.com/u/logarys
-- GitHub: https://github.com/your-org/logarys
-- Documentation site: https://docs.logarys.example.com
+- Docker Hub: https://hub.docker.com/repositories/logarys
+- GitHub: https://github.com/logarys
+- Documentation site: https://docs.logarys.dev
 
 > Replace the GitHub and documentation URLs with your real project URLs.
 

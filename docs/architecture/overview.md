@@ -14,14 +14,14 @@ Logarys uses a message-driven architecture to separate ingestion, persistence, q
 4. The **Storage Manager** consumes messages from the broker.
 5. The **Storage Manager** writes logs to **MongoDB**.
 6. Users access the **UI**.
-7. The **UI** calls the **Query API** to search logs.
-8. The **UI** calls the **Console Manager** to manage pipelines and users.
+7. The **UI** calls the **Console Manager** to manage users, pipelines, configuration, and log queries.
+8. The **Console Manager** reads and writes metadata and log data from **MongoDB**.
 
 ## Main data paths
 
 ```txt
 Source → Ingestor → NATS JetStream → Storage Manager → MongoDB
-User → UI → Query API → MongoDB
+User → UI → Console Manager → MongoDB
 Admin → UI → Console Manager → MongoDB
 ```
 
@@ -30,4 +30,5 @@ Admin → UI → Console Manager → MongoDB
 - Ingestion is decoupled from storage latency.
 - MongoDB supports flexible log schemas.
 - Services can be scaled independently.
+- The public Logarys application stack stays simple: UI, Console Manager, Ingestor, and Storage Manager.
 - Each container has a clear operational role.

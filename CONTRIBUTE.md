@@ -133,7 +133,7 @@ Use full commands whenever possible.
 Good:
 
 ```bash
-docker compose logs -f query-api
+docker compose logs -f console-manager
 ```
 
 Less useful:

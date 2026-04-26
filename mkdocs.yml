@@ -1,8 +1,8 @@
 site_name: Logarys Documentation
 site_description: Documentation for the Logarys realtime logs and pipeline management platform
-site_url: https://docs.logarys.local
-repo_url: https://github.com/your-org/logarys
-repo_name: GitHub
+site_url: https://docs.logarys.dev
+repo_url: https://github.com/logarys
+repo_name: 
 copyright: Copyright &copy; Logarys
 
 theme:
@@ -50,13 +50,13 @@ markdown_extensions:
 
 extra:
   generator: false
-  homepage: https://logarys.local
+  homepage: https://docs.logarys.dev
   social:
     - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/u/logarys
+      link: https://hub.docker.com/repositories/logarys
       name: Docker Hub
     - icon: fontawesome/brands/github
-      link: https://github.com/your-org/logarys
+      link: https://github.com/logarys
       name: GitHub
 
 nav:

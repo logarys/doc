@@ -9,8 +9,8 @@ title: Home
     <p>Logarys is a modular platform for ingesting, normalizing, storing, querying, and administrating logs at scale.</p>
     <div class="logarys-actions">
       <a class="logarys-button primary" href="install/docker-compose/">Install with Docker Compose</a>
-      <a class="logarys-button" href="https://hub.docker.com/u/logarys">Docker Hub</a>
-      <a class="logarys-button" href="https://github.com/your-org/logarys">GitHub</a>
+      <a class="logarys-button" href="https://hub.docker.com/repositories/logarys">Docker Hub</a>
+      <a class="logarys-button" href="https://github.com/logarys">GitHub</a>
     </div>
   </div>
   <img src="assets/logo.svg" alt="Logarys logo" />
@@ -38,12 +38,12 @@ The project is designed for two deployment modes:
 
 | Resource | Link |
 |---|---|
-| Docker Hub | [https://hub.docker.com/u/logarys](https://hub.docker.com/u/logarys) |
-| GitHub | [https://github.com/your-org/logarys](https://github.com/your-org/logarys) |
+| Docker Hub | [https://hub.docker.com/repositories/logarys](https://hub.docker.com/repositories/logarys) |
+| GitHub | [https://github.com/logarys](https://github.com/logarys) |
 
 !!! note
     Replace the GitHub URL with your real repository URL in `mkdocs.yml` and in this page.
 
 ## Components
 
-A complete Logarys stack usually contains the UI, Console Manager, Ingestor, Storage Manager, Query API, NATS JetStream, and MongoDB.
+A complete Logarys stack usually contains the UI, Console Manager, Ingestor, Storage Manager, NATS JetStream, and MongoDB.

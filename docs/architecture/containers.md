@@ -4,6 +4,12 @@
 
 The UI is the dark web console used by administrators and users.
 
+Image:
+
+```txt
+logarys/ui
+```
+
 Responsibilities:
 
 - display logs
@@ -11,10 +17,17 @@ Responsibilities:
 - manage users
 - expose configuration screens
 - provide profile and authentication pages
+- communicate with the Console Manager API
 
 ## Console Manager
 
-The Console Manager is the administration backend.
+The Console Manager is the UI API and administration backend.
+
+Image:
+
+```txt
+logarys/console-manager
+```
 
 Responsibilities:
 
@@ -22,10 +35,18 @@ Responsibilities:
 - manage global configuration
 - expose user management endpoints
 - provide profile update endpoints
+- expose log query endpoints used by the UI
+- translate UI filters, including RSQL, into database queries
 
 ## Ingestor
 
 The Ingestor is the write entrypoint.
+
+Image:
+
+```txt
+logarys/ingestor
+```
 
 Responsibilities:
 
@@ -39,24 +60,19 @@ Responsibilities:
 
 The Storage Manager consumes broker messages and persists them.
 
+Image:
+
+```txt
+logarys/storage-manager
+```
+
 Responsibilities:
 
 - subscribe to JetStream consumers
 - process messages
 - write documents to MongoDB
+- manage rotation, retention, indexes, and metrics
 - retry transient failures
-
-## Query API
-
-The Query API exposes read operations.
-
-Responsibilities:
-
-- list logs
-- filter logs with RSQL
-- paginate results
-- return counts or aggregations
-- apply permission constraints
 
 ## NATS JetStream
 
