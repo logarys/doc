@@ -82,12 +82,15 @@ spec:
         - name: ui
           image: logarys/ui:latest
           ports:
-            - containerPort: 80
+            - containerPort: 4173
           env:
             - name: PUBLIC_CONSOLE_API_URL
               value: "https://logarys.example.com/api"
 ```
 
+## UI service
+
+```yaml
 ## UI service
 
 ```yaml
@@ -101,8 +104,8 @@ spec:
     app: ui
   ports:
     - name: http
-      port: 80
-      targetPort: 80
+      port: 4173
+      targetPort: 4173
 ```
 
 ## Console Manager deployment
@@ -253,7 +256,7 @@ spec:
               service:
                 name: ui
                 port:
-                  number: 80
+                  number: 4173
           - path: /api
             pathType: Prefix
             backend:

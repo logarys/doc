@@ -112,7 +112,7 @@ services:
     depends_on:
       - console-manager
     ports:
-      - "8080:80"
+      - "8080:4173"
     restart: unless-stopped
 
 volumes:
