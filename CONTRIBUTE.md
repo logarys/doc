@@ -236,3 +236,8 @@ Open an issue with:
 - what is unclear
 - the current behavior
 - the expected documentation result
+
+
+### APISIX CRD detection
+
+The deployment script discovers APISIX resources with `kubectl api-resources` instead of assuming a CRD object name. In standard APISIX installations, the `ApisixTls` kind is exposed by the plural CRD `apisixtlses.apisix.apache.org`.

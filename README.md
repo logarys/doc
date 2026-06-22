@@ -208,3 +208,8 @@ On a first deployment, the TLS Secret does not exist yet. The script therefore:
 Existing deployments whose TLS Secret is already present use a single atomic Helm upgrade. If release artifacts were already pushed but deployment failed, retry with `bin/deploy <existing-version>` instead of creating another release.
 
 See [Releases and Kubernetes deployment](docs/maintenance/releases.md) for the complete reference.
+
+
+### APISIX CRD detection
+
+The deployment script discovers APISIX resources with `kubectl api-resources` instead of assuming a CRD object name. In standard APISIX installations, the `ApisixTls` kind is exposed by the plural CRD `apisixtlses.apisix.apache.org`.

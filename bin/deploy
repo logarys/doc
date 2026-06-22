@@ -130,7 +130,12 @@ kube() {
 
 cluster_diagnostics() {
   printf '\nCluster diagnostics:\n' >&2
-  kube get crd certificates.cert-manager.io apisixroutes.apisix.apache.org apisixtls.apisix.apache.org 2>/dev/null >&2 || true
+  printf 'cert-manager API resources:\n' >&2
+  kube api-resources --api-group=cert-manager.io -o name 2>/dev/null >&2 || true
+  printf 'APISIX API resources:\n' >&2
+  kube api-resources --api-group=apisix.apache.org -o name 2>/dev/null >&2 || true
+  printf 'Matching CRDs:\n' >&2
+  kube get crd -o name 2>/dev/null | grep -E '(cert-manager\.io|apisix\.apache\.org)' >&2 || true
   kube get clusterissuer "$cluster_issuer" -o wide 2>/dev/null >&2 || true
   kube describe clusterissuer "$cluster_issuer" 2>/dev/null >&2 || true
 }
@@ -150,18 +155,25 @@ certificate_diagnostics() {
   fi
 }
 
-require_crd() {
-  local crd_name="$1"
-  kube get crd "$crd_name" >/dev/null 2>&1 || {
+require_api_resource() {
+  local api_group="$1"
+  local resource_pattern="$2"
+  local display_name="$3"
+  local resources
+
+  resources="$(kube api-resources --api-group="$api_group" -o name 2>/dev/null || true)"
+  if ! grep -Eq "$resource_pattern" <<< "$resources"; then
     cluster_diagnostics
-    fail "Required Kubernetes CRD is missing: ${crd_name}"
-  }
+    fail "Required Kubernetes API resource is missing: ${display_name} (${api_group})"
+  fi
 }
 
 validate_cluster_prerequisites() {
-  require_crd certificates.cert-manager.io
-  require_crd apisixroutes.apisix.apache.org
-  require_crd apisixtls.apisix.apache.org
+  require_api_resource cert-manager.io '^certificates(\.cert-manager\.io)?$' 'Certificate'
+  require_api_resource apisix.apache.org '^apisixroutes(\.apisix\.apache\.org)?$' 'ApisixRoute'
+  # Kubernetes pluralizes ApisixTls as apisixtlses on standard APISIX CRDs.
+  # The legacy singular-like resource name is also accepted for compatibility.
+  require_api_resource apisix.apache.org '^apisixtls(es)?(\.apisix\.apache\.org)?$' 'ApisixTls'
 
   kube get clusterissuer "$cluster_issuer" >/dev/null 2>&1 || {
     cluster_diagnostics
