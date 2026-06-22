@@ -29,7 +29,7 @@ Options:
   -h, --help       Show this help.
 
 Configuration:
-  All Git, Harbor and deployment values are loaded from the project .env file.
+  Harbor, Docker and deployment values are loaded from the project .env file.
   See .env.example for the complete list of variables.
 USAGE
 }
@@ -130,18 +130,45 @@ if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
   fail 'The Git worktree must be clean before creating a release.'
 fi
 
-require_environment_value GIT_REMOTE || exit 1
-readonly git_remote="$GIT_REMOTE"
+detect_git_remote() {
+  local branch branch_remote
+  local -a remotes=()
+
+  if git remote get-url origin >/dev/null 2>&1; then
+    printf 'origin\n'
+    return
+  fi
+
+  branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  if [[ -n "$branch" ]]; then
+    branch_remote="$(git config --get "branch.${branch}.remote" 2>/dev/null || true)"
+    if [[ -n "$branch_remote" && "$branch_remote" != '.' ]] && git remote get-url "$branch_remote" >/dev/null 2>&1; then
+      printf '%s\n' "$branch_remote"
+      return
+    fi
+  fi
+
+  mapfile -t remotes < <(git remote)
+  if ((${#remotes[@]} == 1)); then
+    printf '%s\n' "${remotes[0]}"
+    return
+  fi
+
+  if ((${#remotes[@]} == 0)); then
+    fail 'No Git remote is configured. Add a remote, preferably named origin.'
+  fi
+
+  fail 'Unable to choose a Git remote automatically. Configure an origin remote or a tracking remote for the current branch.'
+}
+
+git_remote="$(detect_git_remote)" || exit 1
+readonly git_remote
 image_repository="$(harbor_image_repository)" || exit 1
 readonly image_repository
 
-if git remote get-url "$git_remote" >/dev/null 2>&1; then
-  info "Fetching tags from ${git_remote}"
-  if [[ "$dry_run" == false ]]; then
-    git fetch --tags --force "$git_remote"
-  fi
-else
-  fail "Git remote not found: ${git_remote}"
+info "Fetching tags from ${git_remote}"
+if [[ "$dry_run" == false ]]; then
+  git fetch --tags --force "$git_remote"
 fi
 
 current_version="$(latest_stable_version)"

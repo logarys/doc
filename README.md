@@ -166,7 +166,7 @@ DEPLOY_CLUSTER_ISSUER=letsencrypt-production
 
 ## Docker image release
 
-Stable Git tags are the sole version source. The release script loads `.env`, calculates the next version, authenticates to Harbor when credentials are configured, builds and pushes the image, pushes the Git tag, and invokes the Helm deployment script.
+Stable Git tags are the sole version source. The release script loads `.env`, detects the Git remote automatically, calculates the next version, authenticates to Harbor when credentials are configured, builds and pushes the image, pushes the Git tag, and invokes the Helm deployment script.
 
 ```bash
 bin/release --patch

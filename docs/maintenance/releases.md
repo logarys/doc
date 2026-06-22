@@ -9,8 +9,7 @@ The repository contains a release pipeline built around stable Git tags. The sam
 Do not configure Harbor or deployment values with temporary shell exports. Update `.env` instead:
 
 ```dotenv
-# Git release
-GIT_REMOTE=origin
+# Docker build
 DOCKER_BUILD_ARGS=
 
 # Harbor registry
@@ -49,11 +48,13 @@ bin/release --major
 
 Stable tags must use `x.y.z` or `vx.y.z`. Pre-release tags are ignored when the next version is calculated. When the repository has no stable tag, the first release is `0.1.0` regardless of the requested increment.
 
+The Git remote is not configured in `.env`. The script uses `origin` when available, otherwise the current branch tracking remote, otherwise the repository's only configured remote.
+
 The release command performs these operations:
 
 1. loads and validates `.env`
 2. verifies that the Git worktree is clean
-3. fetches remote tags
+3. detects the Git remote automatically and fetches its tags
 4. calculates the next stable semantic version
 5. authenticates to Harbor when both credentials are configured
 6. creates an annotated local Git tag
