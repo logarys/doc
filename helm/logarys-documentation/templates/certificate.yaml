@@ -6,6 +6,9 @@ metadata:
   labels:
     {{- include "logarys-documentation.labels" . | nindent 4 }}
 spec:
+  revisionHistoryLimit: {{ .Values.tls.revisionHistoryLimit }}
+  privateKey:
+    rotationPolicy: {{ .Values.tls.privateKeyRotationPolicy }}
   secretName: {{ .Values.tls.secretName }}
   issuerRef:
     kind: ClusterIssuer

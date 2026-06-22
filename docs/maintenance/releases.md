@@ -29,6 +29,7 @@ DEPLOY_CLUSTER_ISSUER=letsencrypt-production
 DEPLOY_TLS_SECRET_NAME=logarys-documentation-tls
 DEPLOY_REPLICAS=2
 DEPLOY_TIMEOUT=5m
+DEPLOY_CERTIFICATE_TIMEOUT=10m
 DEPLOY_VALUES_FILE=
 DEPLOY_APISIX_INGRESS_CLASS=apisix
 DEPLOY_APISIX_PRIORITY=10
@@ -112,7 +113,25 @@ The deployment script can also be run independently for an image that has alread
 bin/deploy 1.2.3
 ```
 
-It reads the kubeconfig, namespace, host, certificate issuer, APISIX class, replica count, timeout, optional values file, and Harbor image pull secret from `.env`. The Helm command uses `--atomic` and `--wait`; a failed upgrade is rolled back automatically.
+It reads the kubeconfig, namespace, host, certificate issuer, APISIX class, replica count, timeouts, optional values file, and Harbor image pull secret from `.env`.
+
+### First-deployment TLS bootstrap
+
+An `ApisixTls` resource requires its referenced Kubernetes Secret to already contain the certificate and private key. On a new namespace, cert-manager has not created that Secret yet. To avoid applying an invalid TLS reference and to keep the ACME HTTP challenge reachable, `bin/deploy` uses two phases when the Secret is absent:
+
+1. Helm deploys the application, Service, HTTP `ApisixRoute`, and `Certificate`; `ApisixTls` and HTTP-to-HTTPS redirection remain disabled.
+2. The script waits up to `DEPLOY_CERTIFICATE_TIMEOUT` for `certificate/<release-name>` to become `Ready`, then verifies the TLS Secret.
+3. A final Helm upgrade enables `ApisixTls` and the HTTPS redirect with `--atomic` and `--wait`.
+
+When the TLS Secret already exists, only the final atomic upgrade is required. The `Certificate` explicitly uses `privateKey.rotationPolicy: Always`, avoiding the cert-manager 1.18 default-change warning.
+
+If certificate issuance fails, the script prints the current `Certificate`, `CertificateRequest`, ACME `Order`, and `Challenge` resources. Correct the DNS, issuer, or solver configuration, then rerun the same published version:
+
+```bash
+bin/deploy 0.1.0
+```
+
+Do not run `bin/release` again solely to retry a deployment after its Git tag and image have already been pushed.
 
 ## Optional release controls
 

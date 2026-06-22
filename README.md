@@ -160,6 +160,7 @@ DEPLOY_KUBE_CONFIG=${HOME}/.kube/config
 DEPLOY_NAMESPACE=logarys
 DEPLOY_HOST=docs.logarys.dev
 DEPLOY_CLUSTER_ISSUER=letsencrypt-production
+DEPLOY_CERTIFICATE_TIMEOUT=10m
 ```
 
 `HARBOR_USERNAME` and `HARBOR_PASSWORD` may both remain empty when Docker is already authenticated. If one is set, both are required. The `.env` file is ignored by Git so credentials remain local; `.env.example` contains the same safe defaults as a reference.
@@ -196,6 +197,14 @@ The release script calls this command automatically:
 bin/deploy 1.2.3
 ```
 
-The deployment command reads `DEPLOY_*` values and `HARBOR_IMAGE_PULL_SECRET` exclusively from `.env`. It uses `--atomic`, `--wait`, and the configured timeout.
+The deployment command reads `DEPLOY_*` values and `HARBOR_IMAGE_PULL_SECRET` exclusively from `.env`.
+
+On a first deployment, the TLS Secret does not exist yet. The script therefore:
+
+1. deploys the application, HTTP APISIX route, and cert-manager `Certificate` without creating `ApisixTls` or enabling the HTTPS redirect;
+2. waits for the `Certificate` to become `Ready` and verifies that cert-manager created the configured TLS Secret;
+3. applies a final atomic Helm upgrade that enables `ApisixTls` and redirects HTTP to HTTPS.
+
+Existing deployments whose TLS Secret is already present use a single atomic Helm upgrade. If release artifacts were already pushed but deployment failed, retry with `bin/deploy <existing-version>` instead of creating another release.
 
 See [Releases and Kubernetes deployment](docs/maintenance/releases.md) for the complete reference.

@@ -14,6 +14,10 @@ Usage: bin/deploy <version>
 Deploy a previously published Logarys documentation image with Helm.
 The release script invokes this command automatically.
 
+On the first deployment, the script installs the application and Certificate,
+waits for cert-manager to create the TLS Secret, then enables ApisixTls and the
+HTTP-to-HTTPS redirect. Subsequent deployments use a single atomic Helm upgrade.
+
 Configuration:
   All Harbor and Kubernetes values are loaded from the project .env file.
   See .env.example for the complete list of variables.
@@ -38,6 +42,7 @@ version="${1:-}"
 
 load_project_environment "$PROJECT_DIR" || exit 1
 require_command helm
+require_command kubectl
 [[ -f "${CHART_DIR}/Chart.yaml" ]] || fail "Helm chart not found: ${CHART_DIR}"
 
 for variable_name in \
@@ -62,6 +67,7 @@ readonly cluster_issuer="$DEPLOY_CLUSTER_ISSUER"
 readonly tls_secret_name="$DEPLOY_TLS_SECRET_NAME"
 readonly replicas="$DEPLOY_REPLICAS"
 readonly timeout="$DEPLOY_TIMEOUT"
+readonly certificate_timeout="${DEPLOY_CERTIFICATE_TIMEOUT:-10m}"
 readonly ingress_class="$DEPLOY_APISIX_INGRESS_CLASS"
 readonly apisix_priority="$DEPLOY_APISIX_PRIORITY"
 readonly kube_config="${DEPLOY_KUBE_CONFIG:-}"
@@ -71,40 +77,64 @@ readonly image_pull_secret="${HARBOR_IMAGE_PULL_SECRET:-}"
 [[ "$replicas" =~ ^[1-9][0-9]*$ ]] || fail 'DEPLOY_REPLICAS must be a positive integer in .env.'
 [[ "$apisix_priority" =~ ^[0-9]+$ ]] || fail 'DEPLOY_APISIX_PRIORITY must be a non-negative integer in .env.'
 [[ "$host" != *'://'* && "$host" == *.* && "$host" != */* ]] || fail 'DEPLOY_HOST must be a hostname without scheme or path in .env.'
+[[ "$timeout" =~ ^[1-9][0-9]*(s|m|h)$ ]] || fail 'DEPLOY_TIMEOUT must use a Kubernetes duration such as 5m or 1h.'
+[[ "$certificate_timeout" =~ ^[1-9][0-9]*(s|m|h)$ ]] || fail 'DEPLOY_CERTIFICATE_TIMEOUT must use a Kubernetes duration such as 10m or 1h.'
 
-helm_args=(
+helm_base_args=(
   upgrade
   --install
   "$release_name"
   "$CHART_DIR"
   --namespace "$namespace"
   --create-namespace
-  --atomic
   --wait
   --timeout "$timeout"
+  --set-string "fullnameOverride=${release_name}"
   --set-string "image.repository=${image_repository}"
   --set-string "image.tag=${version}"
   --set-string "host=${host}"
   --set-string "tls.secretName=${tls_secret_name}"
   --set-string "tls.clusterIssuer=${cluster_issuer}"
+  --set-string "tls.privateKeyRotationPolicy=Always"
+  --set "tls.revisionHistoryLimit=1"
   --set-string "apisix.ingressClassName=${ingress_class}"
   --set "apisix.priority=${apisix_priority}"
   --set "replicaCount=${replicas}"
 )
 
+kubectl_args=()
 if [[ -n "$kube_config" ]]; then
   [[ -f "$kube_config" ]] || fail "DEPLOY_KUBE_CONFIG does not exist: ${kube_config}"
-  helm_args+=(--kubeconfig "$kube_config")
+  helm_base_args+=(--kubeconfig "$kube_config")
+  kubectl_args+=(--kubeconfig "$kube_config")
 fi
 
 if [[ -n "$values_file" ]]; then
   [[ -f "$values_file" ]] || fail "DEPLOY_VALUES_FILE does not exist: ${values_file}"
-  helm_args+=(--values "$values_file")
+  helm_base_args+=(--values "$values_file")
 fi
 
 if [[ -n "$image_pull_secret" ]]; then
-  helm_args+=(--set-string "imagePullSecrets[0].name=${image_pull_secret}")
+  helm_base_args+=(--set-string "imagePullSecrets[0].name=${image_pull_secret}")
 fi
+
+certificate_diagnostics() {
+  printf '\nCertificate diagnostics:\n' >&2
+  kubectl "${kubectl_args[@]}" -n "$namespace" get certificate,certificaterequest,order,challenge 2>/dev/null >&2 || true
+  kubectl "${kubectl_args[@]}" -n "$namespace" describe "certificate/${release_name}" 2>/dev/null >&2 || true
+}
+
+run_final_deployment() {
+  local -a args=("${helm_base_args[@]}")
+  args+=(
+    --atomic
+    --set "tls.apisixTlsEnabled=true"
+    --set "apisix.redirectHttpToHttps=true"
+  )
+
+  info 'Applying final HTTPS deployment'
+  helm "${args[@]}"
+}
 
 info "Configuration: ${PROJECT_DIR}/.env"
 info "Deploying ${image_repository}:${version}"
@@ -112,6 +142,32 @@ info "Helm release: ${release_name}"
 info "Namespace: ${namespace}"
 info "HTTPS host: ${host}"
 
-helm "${helm_args[@]}"
+if kubectl "${kubectl_args[@]}" -n "$namespace" get secret "$tls_secret_name" >/dev/null 2>&1; then
+  info "TLS Secret already exists: ${namespace}/${tls_secret_name}"
+  run_final_deployment
+else
+  info "TLS Secret not found; bootstrapping certificate without ApisixTls"
+  bootstrap_args=("${helm_base_args[@]}")
+  bootstrap_args+=(
+    --set "tls.apisixTlsEnabled=false"
+    --set "apisix.redirectHttpToHttps=false"
+  )
+  helm "${bootstrap_args[@]}"
+
+  info "Waiting up to ${certificate_timeout} for certificate/${release_name}"
+  if ! kubectl "${kubectl_args[@]}" -n "$namespace" wait \
+    --for=condition=Ready \
+    "certificate/${release_name}" \
+    --timeout "$certificate_timeout"; then
+    certificate_diagnostics
+    fail "Certificate did not become ready. Fix cert-manager/DNS/ACME, then rerun: bin/deploy ${version}"
+  fi
+
+  kubectl "${kubectl_args[@]}" -n "$namespace" get secret "$tls_secret_name" >/dev/null \
+    || fail "Certificate is Ready but TLS Secret is missing: ${namespace}/${tls_secret_name}"
+
+  info "TLS Secret created: ${namespace}/${tls_secret_name}"
+  run_final_deployment
+fi
 
 info "Deployment completed: https://${host}"

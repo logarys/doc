@@ -24,9 +24,12 @@ apisix:
 
 tls:
   enabled: true
+  apisixTlsEnabled: true
   secretName: logarys-documentation-tls
   createCertificate: true
   clusterIssuer: letsencrypt-production
+  privateKeyRotationPolicy: Always
+  revisionHistoryLimit: 1
 
 strategy:
   rollingUpdate:
