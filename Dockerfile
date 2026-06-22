@@ -2,9 +2,16 @@
 
 FROM squidfunk/mkdocs-material:latest AS builder
 
+ARG VERSION=dev
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+
 WORKDIR /workspace
 COPY . .
-RUN mkdocs build --strict --clean --site-dir /workspace/site
+RUN mkdocs build --strict --clean --site-dir /workspace/site \
+    && printf '{"version":"%s","revision":"%s","builtAt":"%s"}\n' \
+      "$VERSION" "$VCS_REF" "$BUILD_DATE" \
+      > /workspace/site/version.json
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
 
@@ -19,11 +26,8 @@ LABEL org.opencontainers.image.title="Logarys Documentation" \
       org.opencontainers.image.created="$BUILD_DATE" \
       org.opencontainers.image.source="https://github.com/logarys"
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /workspace/site /usr/share/nginx/html
-RUN printf '{"version":"%s","revision":"%s","builtAt":"%s"}\n' \
-      "$VERSION" "$VCS_REF" "$BUILD_DATE" \
-      > /usr/share/nginx/html/version.json
+COPY --chown=101:101 docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chown=101:101 --from=builder /workspace/site /usr/share/nginx/html
 
 EXPOSE 8080
 
