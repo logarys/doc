@@ -19,17 +19,27 @@ This documentation site uses:
 - [MkDocs](https://www.mkdocs.org/)
 - [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/)
 - Docker Compose for local preview
-- Caddy for optional static production serving
+- Multi-stage Docker image with unprivileged Nginx for production serving
 
 ## Project structure
 
 ```txt
 .
+├── .env
+├── .env.example
+├── bin/
+│   ├── deploy
+│   ├── release
+│   └── lib/environment.sh
+├── docker/
+│   └── nginx.conf
+├── helm/logarys-documentation/
+├── Dockerfile
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── mkdocs.yml
 ├── README.md
-├── CONTRIBUTING.md
+├── CONTRIBUTE.md
 └── docs/
     ├── index.md
     ├── install/
@@ -73,17 +83,19 @@ site/
 
 ## Production serving
 
-A production example is provided with Caddy:
+The production Compose file uses the same immutable image produced by the release process. It builds the MkDocs site in a multi-stage Docker build and serves it with unprivileged Nginx on container port `8080`.
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Recommended production workflow:
+Then open:
 
-1. build the static documentation
-2. serve the generated `site/` directory with Caddy, Nginx, or another static web server
-3. deploy behind HTTPS
+```txt
+http://localhost:8080
+```
+
+In Kubernetes, use the included Helm chart so the site is exposed through HTTPS with APISIX and cert-manager.
 
 ## Editing documentation
 
@@ -129,3 +141,61 @@ Recommended repository files:
 LICENSE        # CC-BY-4.0 for documentation
 LICENSE-CODE   # MIT for code snippets and configuration examples
 ```
+
+## Environment configuration
+
+The repository includes an initialized `.env` file with local, Harbor, and Kubernetes defaults. Both `bin/release` and `bin/deploy` load this file automatically; deployment and registry settings are not read from ad-hoc shell exports.
+
+Edit at least the Harbor credentials and deployment target before the first production release:
+
+```dotenv
+HARBOR_REGISTRY=containers.locafire.shop
+HARBOR_PROJECT=logarys
+HARBOR_IMAGE_NAME=documentation
+HARBOR_USERNAME=
+HARBOR_PASSWORD=
+HARBOR_IMAGE_PULL_SECRET=harbor-registry-credentials
+
+DEPLOY_KUBE_CONFIG=${HOME}/.kube/config
+DEPLOY_NAMESPACE=logarys
+DEPLOY_HOST=docs.logarys.dev
+DEPLOY_CLUSTER_ISSUER=letsencrypt-production
+```
+
+`HARBOR_USERNAME` and `HARBOR_PASSWORD` may both remain empty when Docker is already authenticated. If one is set, both are required. The `.env` file is ignored by Git so credentials remain local; `.env.example` contains the same safe defaults as a reference.
+
+## Docker image release
+
+Stable Git tags are the sole version source. The release script loads `.env`, calculates the next version, authenticates to Harbor when credentials are configured, builds and pushes the image, pushes the Git tag, and invokes the Helm deployment script.
+
+```bash
+bin/release --patch
+bin/release --minor
+bin/release --major
+```
+
+When no stable tag exists, the first version is `0.1.0`. The image repository is derived from:
+
+```txt
+HARBOR_REGISTRY/HARBOR_PROJECT/HARBOR_IMAGE_NAME
+```
+
+Inspect a release without changing anything:
+
+```bash
+bin/release --minor --dry-run
+```
+
+## Kubernetes deployment with Helm and APISIX
+
+The chart is available in `helm/logarys-documentation`. It deploys two replicas with rolling updates, readiness/liveness probes, an APISIX route, APISIX TLS binding, and a cert-manager certificate.
+
+The release script calls this command automatically:
+
+```bash
+bin/deploy 1.2.3
+```
+
+The deployment command reads `DEPLOY_*` values and `HARBOR_IMAGE_PULL_SECRET` exclusively from `.env`. It uses `--atomic`, `--wait`, and the configured timeout.
+
+See [Releases and Kubernetes deployment](docs/maintenance/releases.md) for the complete reference.

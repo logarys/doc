@@ -1,0 +1,69 @@
+replicaCount: 2
+
+image:
+  repository: logarys/documentation
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+host: docs.logarys.dev
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+apisix:
+  enabled: true
+  ingressClassName: apisix
+  priority: 10
+  redirectHttpToHttps: true
+
+tls:
+  enabled: true
+  secretName: logarys-documentation-tls
+  createCertificate: true
+  clusterIssuer: letsencrypt-production
+
+strategy:
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 101
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+topologySpreadConstraints: []
+
+terminationGracePeriodSeconds: 30
+
+revisionHistoryLimit: 3

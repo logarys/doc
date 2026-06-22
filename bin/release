@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=bin/lib/environment.sh
+source "${SCRIPT_DIR}/lib/environment.sh"
+
+usage() {
+  cat <<'USAGE'
+Usage: bin/release --patch|--minor|--major [options]
+
+Create the next stable Git tag, authenticate to Harbor when credentials are
+configured, build and push the Docker image, push the Git tag, then deploy it.
+
+Version rules:
+  - no stable tag: 0.1.0
+  - --patch:       x.y.z -> x.y.(z+1)
+  - --minor:       x.y.z -> x.(y+1).0
+  - --major:       x.y.z -> (x+1).0.0
+
+Options:
+  --patch          Increment the patch version.
+  --minor          Increment the minor version.
+  --major          Increment the major version.
+  --dry-run        Print actions without changing Git, Harbor or Kubernetes.
+  --skip-latest    Do not publish the mutable :latest image tag.
+  --skip-deploy    Build/push/tag the release without invoking bin/deploy.
+  -h, --help       Show this help.
+
+Configuration:
+  All Git, Harbor and deployment values are loaded from the project .env file.
+  See .env.example for the complete list of variables.
+USAGE
+}
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+info() {
+  printf '==> %s\n' "$*"
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
+}
+
+is_stable_tag() {
+  [[ "$1" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+normalize_version() {
+  printf '%s\n' "${1#v}"
+}
+
+latest_stable_version() {
+  local tag
+  while IFS= read -r tag; do
+    if is_stable_tag "$tag"; then
+      normalize_version "$tag"
+    fi
+  done < <(git tag --list) | sort -V | tail -n 1
+}
+
+next_version() {
+  local current="$1"
+  local bump="$2"
+  local major minor patch
+
+  if [[ -z "$current" ]]; then
+    printf '0.1.0\n'
+    return
+  fi
+
+  IFS=. read -r major minor patch <<<"$current"
+  case "$bump" in
+    patch) printf '%d.%d.%d\n' "$major" "$minor" "$((patch + 1))" ;;
+    minor) printf '%d.%d.0\n' "$major" "$((minor + 1))" ;;
+    major) printf '%d.0.0\n' "$((major + 1))" ;;
+    *) fail "Unsupported bump type: $bump" ;;
+  esac
+}
+
+login_to_harbor() {
+  local username="${HARBOR_USERNAME:-}"
+  local password="${HARBOR_PASSWORD:-}"
+
+  if [[ -z "$username" && -z "$password" ]]; then
+    info "Harbor credentials are empty in .env; using the existing Docker login for ${HARBOR_REGISTRY}"
+    return
+  fi
+
+  [[ -n "$username" && -n "$password" ]] || fail 'HARBOR_USERNAME and HARBOR_PASSWORD must either both be set or both be empty in .env.'
+
+  info "Authenticating to Harbor registry ${HARBOR_REGISTRY}"
+  printf '%s' "$password" | docker login "$HARBOR_REGISTRY" --username "$username" --password-stdin
+}
+
+bump_type=''
+dry_run=false
+push_latest=true
+deploy=true
+
+while (($# > 0)); do
+  case "$1" in
+    --patch|--minor|--major)
+      [[ -z "$bump_type" ]] || fail 'Choose exactly one of --patch, --minor or --major.'
+      bump_type="${1#--}"
+      ;;
+    --dry-run) dry_run=true ;;
+    --skip-latest) push_latest=false ;;
+    --skip-deploy) deploy=false ;;
+    -h|--help) usage; exit 0 ;;
+    *) fail "Unknown option: $1" ;;
+  esac
+  shift
+done
+
+[[ -n "$bump_type" ]] || { usage >&2; fail 'A version increment is required.'; }
+
+load_project_environment "$PROJECT_DIR" || exit 1
+require_command git
+
+cd "$PROJECT_DIR"
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail 'The project is not inside a Git repository.'
+
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+  fail 'The Git worktree must be clean before creating a release.'
+fi
+
+require_environment_value GIT_REMOTE || exit 1
+readonly git_remote="$GIT_REMOTE"
+image_repository="$(harbor_image_repository)" || exit 1
+readonly image_repository
+
+if git remote get-url "$git_remote" >/dev/null 2>&1; then
+  info "Fetching tags from ${git_remote}"
+  if [[ "$dry_run" == false ]]; then
+    git fetch --tags --force "$git_remote"
+  fi
+else
+  fail "Git remote not found: ${git_remote}"
+fi
+
+current_version="$(latest_stable_version)"
+version="$(next_version "$current_version" "$bump_type")"
+
+if git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
+  fail "Git tag already exists: ${version}"
+fi
+
+readonly revision="$(git rev-parse HEAD)"
+readonly build_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+readonly version_image="${image_repository}:${version}"
+readonly latest_image="${image_repository}:latest"
+
+info "Configuration: ${PROJECT_DIR}/.env"
+info "Current stable version: ${current_version:-none}"
+info "Next version: ${version}"
+info "Harbor image: ${version_image}"
+
+if [[ "$dry_run" == true ]]; then
+  if [[ -n "${HARBOR_USERNAME:-}" && -n "${HARBOR_PASSWORD:-}" ]]; then
+    info "Would authenticate to Harbor registry ${HARBOR_REGISTRY}"
+  else
+    info "Would use the existing Docker login for ${HARBOR_REGISTRY}"
+  fi
+  info "Would create annotated Git tag ${version}"
+  info "Would build ${version_image}"
+  info "Would push ${version_image}"
+  [[ "$push_latest" == true ]] && info "Would push ${latest_image}"
+  info "Would push Git tag ${version} to ${git_remote}"
+  [[ "$deploy" == true ]] && info "Would invoke bin/deploy ${version}"
+  exit 0
+fi
+
+require_command docker
+login_to_harbor
+
+tag_created=false
+tag_pushed=false
+cleanup_failed_release() {
+  local exit_code=$?
+  if ((exit_code != 0)) && [[ "$tag_created" == true && "$tag_pushed" == false ]]; then
+    git tag -d "$version" >/dev/null 2>&1 || true
+    printf 'Local tag %s removed because the release did not complete.\n' "$version" >&2
+  fi
+  exit "$exit_code"
+}
+trap cleanup_failed_release EXIT
+
+git tag -a "$version" -m "Release ${version}"
+tag_created=true
+
+build_args=(
+  --build-arg "VERSION=${version}"
+  --build-arg "VCS_REF=${revision}"
+  --build-arg "BUILD_DATE=${build_date}"
+  --label "org.opencontainers.image.version=${version}"
+  --label "org.opencontainers.image.revision=${revision}"
+  --tag "$version_image"
+)
+
+if [[ "$push_latest" == true ]]; then
+  build_args+=(--tag "$latest_image")
+fi
+
+if [[ -n "${DOCKER_BUILD_ARGS:-}" ]]; then
+  # Intentional shell splitting: .env contains a list of docker build options.
+  # shellcheck disable=SC2206
+  extra_build_args=( ${DOCKER_BUILD_ARGS} )
+  build_args+=("${extra_build_args[@]}")
+fi
+
+build_args+=(.)
+
+info 'Building the documentation image'
+docker build "${build_args[@]}"
+
+info "Pushing ${version_image}"
+docker push "$version_image"
+
+if [[ "$push_latest" == true ]]; then
+  info "Pushing ${latest_image}"
+  docker push "$latest_image"
+fi
+
+info "Pushing Git tag ${version}"
+git push "$git_remote" "refs/tags/${version}"
+tag_pushed=true
+
+if [[ "$deploy" == true ]]; then
+  info "Deploying release ${version}"
+  "$SCRIPT_DIR/deploy" "$version"
+fi
+
+trap - EXIT
+info "Release ${version} completed"

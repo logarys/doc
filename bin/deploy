@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+readonly CHART_DIR="${PROJECT_DIR}/helm/logarys-documentation"
+# shellcheck source=bin/lib/environment.sh
+source "${SCRIPT_DIR}/lib/environment.sh"
+
+usage() {
+  cat <<'USAGE'
+Usage: bin/deploy <version>
+
+Deploy a previously published Logarys documentation image with Helm.
+The release script invokes this command automatically.
+
+Configuration:
+  All Harbor and Kubernetes values are loaded from the project .env file.
+  See .env.example for the complete list of variables.
+USAGE
+}
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+info() {
+  printf '==> %s\n' "$*"
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
+}
+
+version="${1:-}"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { usage >&2; fail 'A stable semantic version is required.'; }
+
+load_project_environment "$PROJECT_DIR" || exit 1
+require_command helm
+[[ -f "${CHART_DIR}/Chart.yaml" ]] || fail "Helm chart not found: ${CHART_DIR}"
+
+for variable_name in \
+  DEPLOY_RELEASE_NAME \
+  DEPLOY_NAMESPACE \
+  DEPLOY_HOST \
+  DEPLOY_CLUSTER_ISSUER \
+  DEPLOY_TLS_SECRET_NAME \
+  DEPLOY_REPLICAS \
+  DEPLOY_TIMEOUT \
+  DEPLOY_APISIX_INGRESS_CLASS \
+  DEPLOY_APISIX_PRIORITY; do
+  require_environment_value "$variable_name" || exit 1
+done
+
+image_repository="$(harbor_image_repository)" || exit 1
+readonly image_repository
+readonly release_name="$DEPLOY_RELEASE_NAME"
+readonly namespace="$DEPLOY_NAMESPACE"
+readonly host="$DEPLOY_HOST"
+readonly cluster_issuer="$DEPLOY_CLUSTER_ISSUER"
+readonly tls_secret_name="$DEPLOY_TLS_SECRET_NAME"
+readonly replicas="$DEPLOY_REPLICAS"
+readonly timeout="$DEPLOY_TIMEOUT"
+readonly ingress_class="$DEPLOY_APISIX_INGRESS_CLASS"
+readonly apisix_priority="$DEPLOY_APISIX_PRIORITY"
+readonly kube_config="${DEPLOY_KUBE_CONFIG:-}"
+readonly values_file="${DEPLOY_VALUES_FILE:-}"
+readonly image_pull_secret="${HARBOR_IMAGE_PULL_SECRET:-}"
+
+[[ "$replicas" =~ ^[1-9][0-9]*$ ]] || fail 'DEPLOY_REPLICAS must be a positive integer in .env.'
+[[ "$apisix_priority" =~ ^[0-9]+$ ]] || fail 'DEPLOY_APISIX_PRIORITY must be a non-negative integer in .env.'
+[[ "$host" != *'://'* && "$host" == *.* && "$host" != */* ]] || fail 'DEPLOY_HOST must be a hostname without scheme or path in .env.'
+
+helm_args=(
+  upgrade
+  --install
+  "$release_name"
+  "$CHART_DIR"
+  --namespace "$namespace"
+  --create-namespace
+  --atomic
+  --wait
+  --timeout "$timeout"
+  --set-string "image.repository=${image_repository}"
+  --set-string "image.tag=${version}"
+  --set-string "host=${host}"
+  --set-string "tls.secretName=${tls_secret_name}"
+  --set-string "tls.clusterIssuer=${cluster_issuer}"
+  --set-string "apisix.ingressClassName=${ingress_class}"
+  --set "apisix.priority=${apisix_priority}"
+  --set "replicaCount=${replicas}"
+)
+
+if [[ -n "$kube_config" ]]; then
+  [[ -f "$kube_config" ]] || fail "DEPLOY_KUBE_CONFIG does not exist: ${kube_config}"
+  helm_args+=(--kubeconfig "$kube_config")
+fi
+
+if [[ -n "$values_file" ]]; then
+  [[ -f "$values_file" ]] || fail "DEPLOY_VALUES_FILE does not exist: ${values_file}"
+  helm_args+=(--values "$values_file")
+fi
+
+if [[ -n "$image_pull_secret" ]]; then
+  helm_args+=(--set-string "imagePullSecrets[0].name=${image_pull_secret}")
+fi
+
+info "Configuration: ${PROJECT_DIR}/.env"
+info "Deploying ${image_repository}:${version}"
+info "Helm release: ${release_name}"
+info "Namespace: ${namespace}"
+info "HTTPS host: ${host}"
+
+helm "${helm_args[@]}"
+
+info "Deployment completed: https://${host}"

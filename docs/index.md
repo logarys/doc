@@ -1,49 +1,95 @@
 ---
 title: Home
+hide:
+  - toc
 ---
 
 <div class="logarys-hero">
-  <div>
-    <span class="logarys-pill">Realtime logs and pipeline management</span>
-    <h1>Logarys</h1>
-    <p>Logarys is a modular platform for ingesting, normalizing, storing, querying, and administrating logs at scale.</p>
+  <div class="logarys-hero__content">
+    <span class="logarys-kicker">Realtime observability platform</span>
+    <h1><span>Logs made operational.</span></h1>
+    <p>Logarys provides a modular path from log ingestion to durable storage, structured queries, pipeline administration, and production operations.</p>
     <div class="logarys-actions">
-      <a class="logarys-button primary" href="install/docker-compose/">Install with Docker Compose</a>
-      <a class="logarys-button" href="https://hub.docker.com/repositories/logarys">Docker Hub</a>
-      <a class="logarys-button" href="https://github.com/logarys">GitHub</a>
+      <a class="logarys-button primary" href="install/docker-compose/">Start with Docker Compose</a>
+      <a class="logarys-button" href="architecture/overview/">Explore the architecture</a>
+      <a class="logarys-button" href="https://hub.docker.com/repositories/logarys">View Docker images</a>
     </div>
   </div>
-  <img src="assets/logo.svg" alt="Logarys logo" />
+  <div class="logarys-hero__visual" aria-hidden="true">
+    <div class="logarys-hero__orbit"></div>
+    <img class="logarys-hero__logo" src="assets/logo.svg" alt="" />
+  </div>
 </div>
 
-## Introduction
-
-Logarys is organized as a set of focused containers. Each service has one responsibility: receive logs, transport them, persist them, query them, or administrate the platform.
-
-The project is designed for two deployment modes:
-
-- **Mono-server deployment** with Docker Compose for small and medium installations.
-- **Kubernetes deployment** for scalable and resilient production platforms.
-
-## Main capabilities
+<div class="logarys-section-intro">
+  <div>
+    <span class="logarys-pill">Platform model</span>
+    <h2>One focused service for every operational responsibility</h2>
+  </div>
+  <p>Logarys separates ingestion, transport, persistence, querying, and administration. This keeps each component easier to scale, secure, replace, and operate independently.</p>
+</div>
 
 <div class="logarys-grid">
-  <div class="logarys-card"><h3>Ingestion</h3><p>Expose HTTP or internal endpoints to collect logs and normalize them before publication.</p></div>
-  <div class="logarys-card"><h3>Pipelines</h3><p>Define how payloads are parsed, transformed, routed, indexed, and retained.</p></div>
-  <div class="logarys-card"><h3>Queries</h3><p>Search logs through a dedicated API using an RSQL-style filter syntax.</p></div>
-  <div class="logarys-card"><h3>Administration</h3><p>Use the Logarys console to manage users, pipelines, and global configuration.</p></div>
+  <div class="logarys-card">
+    <span class="logarys-card__index">01</span>
+    <h3>Ingest consistently</h3>
+    <p>Receive logs through HTTP or internal endpoints, then normalize heterogeneous payloads before publication.</p>
+  </div>
+  <div class="logarys-card">
+    <span class="logarys-card__index">02</span>
+    <h3>Control pipelines</h3>
+    <p>Configure parsing, transformation, routing, security, publication, indexing, and retention behavior.</p>
+  </div>
+  <div class="logarys-card">
+    <span class="logarys-card__index">03</span>
+    <h3>Query operational data</h3>
+    <p>Search stored events through a dedicated API using expressive RSQL-style filters.</p>
+  </div>
+  <div class="logarys-card">
+    <span class="logarys-card__index">04</span>
+    <h3>Administer safely</h3>
+    <p>Manage users, pipelines, permissions, and global configuration from the Logarys console.</p>
+  </div>
 </div>
 
-## Official links
+## From event to searchable record
 
-| Resource | Link |
-|---|---|
-| Docker Hub | [https://hub.docker.com/repositories/logarys](https://hub.docker.com/repositories/logarys) |
-| GitHub | [https://github.com/logarys](https://github.com/logarys) |
+<div class="logarys-flow" aria-label="Log processing flow">
+  <div class="logarys-flow__item"><strong>Applications</strong><span>Emit events</span></div>
+  <div class="logarys-flow__item"><strong>Ingestor</strong><span>Parse and normalize</span></div>
+  <div class="logarys-flow__item"><strong>JetStream</strong><span>Transport durably</span></div>
+  <div class="logarys-flow__item"><strong>Storage Manager</strong><span>Persist records</span></div>
+  <div class="logarys-flow__item"><strong>Console</strong><span>Query and operate</span></div>
+</div>
 
-!!! note
-    Replace the GitHub URL with your real repository URL in `mkdocs.yml` and in this page.
+## Choose your path
 
-## Components
+<div class="logarys-paths">
+  <a class="logarys-path" href="install/docker-compose/">
+    <small>Deploy</small>
+    <strong>Install on one server</strong>
+    <span>Launch a complete stack with Docker Compose for evaluation or smaller installations.</span>
+  </a>
+  <a class="logarys-path" href="install/kubernetes/">
+    <small>Scale</small>
+    <strong>Deploy on Kubernetes</strong>
+    <span>Prepare a resilient production deployment with independent service scaling.</span>
+  </a>
+  <a class="logarys-path" href="pipelines/configuration/">
+    <small>Configure</small>
+    <strong>Define a pipeline</strong>
+    <span>Review every supported parser, mapping, publication, and security parameter.</span>
+  </a>
+</div>
 
-A complete Logarys stack usually contains the UI, Console Manager, Ingestor, Storage Manager, NATS JetStream, and MongoDB.
+## Deployment options
+
+Logarys supports two primary deployment models:
+
+- **Docker Compose** for mono-server, development, evaluation, and small-to-medium installations.
+- **Kubernetes** for scalable, resilient, and independently operated production services.
+
+<div class="logarys-link-panel">
+  <p><strong>Need the complete system view?</strong>See how the UI, Console Manager, Ingestor, Storage Manager, NATS JetStream, and MongoDB cooperate.</p>
+  <a class="logarys-button" href="architecture/containers/">Review all components</a>
+</div>

@@ -1,0 +1,15 @@
+apiVersion: v2
+name: logarys-documentation
+description: Helm chart for the Logarys documentation website
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - logarys
+  - documentation
+  - mkdocs
+home: https://docs.logarys.dev
+sources:
+  - https://github.com/logarys
+maintainers:
+  - name: Logarys

@@ -1,19 +1,19 @@
 services:
-  docs-build:
-    image: squidfunk/mkdocs-material:latest
-    working_dir: /docs
-    volumes:
-      - ./:/docs
-    command: build --clean
-
   docs:
-    image: caddy:2-alpine
-    container_name: logarys-docs-static
+    image: ${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${HARBOR_IMAGE_NAME}:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      args:
+        VERSION: ${IMAGE_TAG:-local}
+        VCS_REF: ${VCS_REF:-local}
+        BUILD_DATE: ${BUILD_DATE:-local}
+    container_name: logarys-documentation
     ports:
-      - "8080:80"
-    volumes:
-      - ./site:/usr/share/caddy:ro
+      - "${DOCS_HTTP_PORT:-8080}:8080"
     restart: unless-stopped
-    depends_on:
-      docs-build:
-        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

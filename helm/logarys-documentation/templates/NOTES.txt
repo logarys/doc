@@ -1,0 +1,6 @@
+Logarys documentation has been deployed.
+
+URL: https://{{ .Values.host }}
+Image: {{ include "logarys-documentation.image" . }}
+Health endpoint: https://{{ .Values.host }}/healthz
+Version metadata: https://{{ .Values.host }}/version.json

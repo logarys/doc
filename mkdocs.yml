@@ -69,6 +69,7 @@ nav:
       - Containers: architecture/containers.md
   - Maintenance:
       - Best practices: maintenance/best-practices.md
+      - Releases and deployment: maintenance/releases.md
   - Security:
       - User management: security/user-management.md
   - Query:
