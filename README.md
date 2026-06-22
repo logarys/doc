@@ -29,11 +29,12 @@ This documentation site uses:
 ├── .env.example
 ├── bin/
 │   ├── deploy
-│   ├── release
-│   └── lib/environment.sh
+│   └── release
+├── scripts/lib/
+│   └── env.sh
 ├── docker/
 │   └── nginx.conf
-├── helm/logarys-documentation/
+├── deploy/helm/logarys-documentation/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
@@ -144,30 +145,37 @@ LICENSE-CODE   # MIT for code snippets and configuration examples
 
 ## Environment configuration
 
-The repository includes an initialized `.env` file with local, Harbor, and Kubernetes defaults. Both `bin/release` and `bin/deploy` load this file automatically; deployment and registry settings are not read from ad-hoc shell exports.
+The repository includes initialized `.env` and `.env.example` files. Both `bin/release` and `bin/deploy` load `.env` automatically. The deployment variables intentionally use the same names and defaults as the working Small Project deployment process.
 
-Edit at least the Harbor credentials and deployment target before the first production release:
+Configure the Harbor credentials before deployment:
 
 ```dotenv
 HARBOR_REGISTRY=containers.locafire.shop
-HARBOR_PROJECT=logarys
-HARBOR_IMAGE_NAME=documentation
+HARBOR_PROJECT=small-project
+HARBOR_REPOSITORY=logarys-docs
 HARBOR_USERNAME=
 HARBOR_PASSWORD=
-HARBOR_IMAGE_PULL_SECRET=harbor-registry-credentials
-
-DEPLOY_KUBE_CONFIG=${HOME}/.kube/config
-DEPLOY_NAMESPACE=logarys
-DEPLOY_HOST=docs.logarys.dev
-DEPLOY_CLUSTER_ISSUER=letsencrypt-production
-DEPLOY_CERTIFICATE_TIMEOUT=10m
+HARBOR_EMAIL=sebastien.kus@gmail.com
+HARBOR_LOGIN=true
 ```
 
-`HARBOR_USERNAME` and `HARBOR_PASSWORD` may both remain empty when Docker is already authenticated. If one is set, both are required. The `.env` file is ignored by Git so credentials remain local; `.env.example` contains the same safe defaults as a reference.
+The Kubernetes defaults target the production cluster and the existing Small Project certificate issuer:
+
+```dotenv
+KUBE_CONFIG=/home/seb/.kube/prod-1.yml
+KUBE_NAMESPACE=logarys
+HELM_RELEASE=logarys-documentation
+HELM_CHART=deploy/helm/logarys-documentation
+DEPLOY_HOST=docs.logarys.dev
+DEPLOY_APISIX_INGRESS_CLASS=apisix
+DEPLOY_CERTIFICATE_ISSUER=letsencrypt-prod
+```
+
+`ClusterIssuer/letsencrypt-prod` is a cluster prerequisite. The Logarys deployment does not create or modify it. This is the same behavior as the Small Project deployment.
 
 ## Docker image release
 
-Stable Git tags are the sole version source. The release script loads `.env`, detects the Git remote automatically, calculates the next version, authenticates to Harbor when credentials are configured, builds and pushes the image, pushes the Git tag, and invokes the Helm deployment script.
+Stable Git tags are the sole version source. The release script calculates the next semantic version, builds and pushes the Harbor image, deploys it, then publishes the Git tag only after deployment succeeds. A failed deployment therefore does not consume a release number.
 
 ```bash
 bin/release --patch
@@ -178,7 +186,7 @@ bin/release --major
 When no stable tag exists, the first version is `0.1.0`. The image repository is derived from:
 
 ```txt
-HARBOR_REGISTRY/HARBOR_PROJECT/HARBOR_IMAGE_NAME
+HARBOR_REGISTRY/HARBOR_PROJECT/HARBOR_REPOSITORY
 ```
 
 Inspect a release without changing anything:
@@ -189,27 +197,23 @@ bin/release --minor --dry-run
 
 ## Kubernetes deployment with Helm and APISIX
 
-The chart is available in `helm/logarys-documentation`. It deploys two replicas with rolling updates, readiness/liveness probes, an APISIX route, APISIX TLS binding, and a cert-manager certificate.
+The chart is located in `deploy/helm/logarys-documentation`. The deployment uses the same single-pass workflow as Small Project:
 
-The release script calls this command automatically:
+1. validate the canonical APISIX and cert-manager CRDs;
+2. validate `IngressClass/apisix` and the configured issuer;
+3. create or update the namespace and Harbor image pull secret;
+4. render the chart with `helm template`;
+5. run one `helm upgrade --install --wait`, with `--atomic` enabled by default;
+6. wait for the Deployment rollout and Certificate readiness;
+7. verify the HTTPS endpoint and HTTP-to-HTTPS redirect.
+
+The chart creates the `Deployment`, `Service`, `PodDisruptionBudget`, `ApisixRoute`, `ApisixTls`, and cert-manager `Certificate` together. It does not use a custom TLS bootstrap or create a `ClusterIssuer`.
+
+The release script invokes deployment automatically. A published image can also be deployed directly:
 
 ```bash
 bin/deploy 1.2.3
 ```
 
-The deployment command reads `DEPLOY_*` values and `HARBOR_IMAGE_PULL_SECRET` exclusively from `.env`.
-
-On a first deployment, the TLS Secret does not exist yet. The script therefore:
-
-1. deploys the application, HTTP APISIX route, and cert-manager `Certificate` without creating `ApisixTls` or enabling the HTTPS redirect;
-2. waits for the `Certificate` to become `Ready` and verifies that cert-manager created the configured TLS Secret;
-3. applies a final atomic Helm upgrade that enables `ApisixTls` and redirects HTTP to HTTPS.
-
-Existing deployments whose TLS Secret is already present use a single atomic Helm upgrade. If release artifacts were already pushed but deployment failed, retry with `bin/deploy <existing-version>` instead of creating another release.
-
 See [Releases and Kubernetes deployment](docs/maintenance/releases.md) for the complete reference.
 
-
-### APISIX CRD detection
-
-The deployment script discovers APISIX resources with `kubectl api-resources` instead of assuming a CRD object name. In standard APISIX installations, the `ApisixTls` kind is exposed by the plural CRD `apisixtlses.apisix.apache.org`.

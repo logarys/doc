@@ -1,0 +1,27 @@
+{{- if .Values.apisix.enabled }}
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: {{ .Values.apisix.routeName }}
+  labels:
+    {{- include "logarys-documentation.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.apisix.ingressClassName }}
+  http:
+    - name: documentation
+      match:
+        hosts:
+          - {{ .Values.apisix.host | quote }}
+        paths:
+          - {{ .Values.apisix.path | quote }}
+      {{- if .Values.apisix.httpToHttps }}
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            http_to_https: true
+      {{- end }}
+      backends:
+        - serviceName: {{ include "logarys-documentation.fullname" . }}
+          servicePort: {{ .Values.service.port }}
+{{- end }}

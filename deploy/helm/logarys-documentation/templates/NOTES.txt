@@ -1,0 +1,4 @@
+Logarys documentation is deployed at https://{{ .Values.apisix.host }}.
+
+Check resources:
+  kubectl -n {{ .Release.Namespace }} get deployment,service,apisixroute,apisixtls,certificate

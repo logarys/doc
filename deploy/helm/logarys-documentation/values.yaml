@@ -1,0 +1,54 @@
+replicaCount: 2
+
+image:
+  repository: containers.locafire.shop/small-project/logarys-docs
+  tag: '0.2.1'
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: harbor-registry-credentials
+
+containerPort: 8080
+
+service:
+  type: ClusterIP
+  port: 80
+
+strategy:
+  maxSurge: 1
+  maxUnavailable: 0
+
+health:
+  path: /healthz
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+apisix:
+  enabled: true
+  ingressClassName: apisix
+  routeName: logarys-documentation
+  tlsName: logarys-documentation-tls
+  host: docs.logarys.dev
+  path: '/*'
+  httpToHttps: true
+
+certificate:
+  enabled: true
+  name: logarys-documentation
+  secretName: logarys-documentation-tls
+  duration: 2160h
+  renewBefore: 360h
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io

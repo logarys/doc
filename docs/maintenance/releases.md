@@ -1,46 +1,48 @@
 # Releases and Kubernetes deployment
 
-The repository contains a release pipeline built around stable Git tags. The same semantic version is used for the Git tag, Harbor image tag, and Helm deployment.
+Logarys documentation uses the same Harbor, Helm, APISIX, cert-manager, and rollout process as the Small Project website. Stable Git tags remain the version source.
 
-## Required `.env` file
+## Configuration file
 
-`bin/release` and `bin/deploy` automatically load the project-root `.env`. The repository already contains an initialized file with defaults, and `.env.example` mirrors the available settings.
-
-Do not configure Harbor or deployment values with temporary shell exports. Update `.env` instead:
+`bin/release` and `bin/deploy` load the project-root `.env` automatically. `.env.example` contains the same initialized defaults.
 
 ```dotenv
-# Docker build
-DOCKER_BUILD_ARGS=
-
-# Harbor registry
+# Harbor
 HARBOR_REGISTRY=containers.locafire.shop
-HARBOR_PROJECT=logarys
-HARBOR_IMAGE_NAME=documentation
+HARBOR_PROJECT=small-project
+HARBOR_REPOSITORY=logarys-docs
 HARBOR_USERNAME=
 HARBOR_PASSWORD=
-HARBOR_IMAGE_PULL_SECRET=harbor-registry-credentials
+HARBOR_EMAIL=sebastien.kus@gmail.com
+HARBOR_LOGIN=true
+HARBOR_PUSH_LATEST=true
 
-# Kubernetes / Helm deployment
-DEPLOY_KUBE_CONFIG=${HOME}/.kube/config
-DEPLOY_RELEASE_NAME=logarys-documentation
-DEPLOY_NAMESPACE=logarys
+# Kubernetes and Helm
+KUBE_CONFIG=/home/seb/.kube/prod-1.yml
+KUBE_CONTEXT=
+KUBE_NAMESPACE=logarys
+HELM_RELEASE=logarys-documentation
+HELM_CHART=deploy/helm/logarys-documentation
+HELM_TIMEOUT=10m
+HELM_ATOMIC=true
+HELM_CREATE_NAMESPACE=true
+
+# APISIX and cert-manager
 DEPLOY_HOST=docs.logarys.dev
-DEPLOY_CLUSTER_ISSUER=letsencrypt-production
-DEPLOY_TLS_SECRET_NAME=logarys-documentation-tls
-DEPLOY_REPLICAS=2
-DEPLOY_TIMEOUT=5m
-DEPLOY_CERTIFICATE_TIMEOUT=10m
-DEPLOY_VALUES_FILE=
 DEPLOY_APISIX_INGRESS_CLASS=apisix
-DEPLOY_APISIX_PRIORITY=10
-DEPLOY_APISIX_BOOTSTRAP_PRIORITY=-100
+DEPLOY_APISIX_ROUTE_NAME=logarys-documentation
+DEPLOY_APISIX_TLS_NAME=logarys-documentation-tls
+DEPLOY_CERTIFICATE_NAME=logarys-documentation
+DEPLOY_CERTIFICATE_SECRET=logarys-documentation-tls
+DEPLOY_CERTIFICATE_ISSUER=letsencrypt-prod
+DEPLOY_CERTIFICATE_ISSUER_KIND=ClusterIssuer
 ```
 
-The `.env` file is ignored by Git. Keep production credentials only in that local file or inject them securely when provisioning the working copy.
+The deployment requires the existing `ClusterIssuer/letsencrypt-prod`. It deliberately does not create or update cluster-scoped certificate issuers.
 
 ## Release commands
 
-Choose exactly one increment:
+Choose one semantic increment:
 
 ```bash
 bin/release --patch
@@ -48,108 +50,97 @@ bin/release --minor
 bin/release --major
 ```
 
-Stable tags must use `x.y.z` or `vx.y.z`. Pre-release tags are ignored when the next version is calculated. When the repository has no stable tag, the first release is `0.1.0` regardless of the requested increment.
+The latest stable `x.y.z` or `vx.y.z` Git tag is used as the source version. Pre-release tags are ignored. Without a stable tag, the initial release is `0.1.0`.
 
-The Git remote is not configured in `.env`. The script uses `origin` when available, otherwise the current branch tracking remote, otherwise the repository's only configured remote.
+The script performs these operations:
 
-The release command performs these operations:
+1. load and validate `.env`;
+2. require a clean Git worktree;
+3. detect the Git remote and fetch tags;
+4. calculate the next stable version;
+5. lint the Helm chart;
+6. log in to Harbor when `HARBOR_LOGIN=true`;
+7. build and push the immutable image and optional `latest` tag;
+8. deploy the image with `bin/deploy`;
+9. create and push the Git tag only after deployment succeeds.
 
-1. loads and validates `.env`
-2. verifies that the Git worktree is clean
-3. detects the Git remote automatically and fetches its tags
-4. calculates the next stable semantic version
-5. authenticates to Harbor when both credentials are configured
-6. creates an annotated local Git tag
-7. builds the static MkDocs site inside the Docker image
-8. pushes `<Harbor repository>:<version>` and `<Harbor repository>:latest`
-9. pushes the Git tag
-10. invokes `bin/deploy <version>`
+This ordering prevents a failed Kubernetes deployment from consuming a Git release number.
 
-Use a dry run to inspect the calculated version and actions:
+Use a dry run to inspect the actions:
 
 ```bash
 bin/release --minor --dry-run
 ```
 
-## Harbor behavior
-
-The image repository is always derived from:
-
-```txt
-HARBOR_REGISTRY/HARBOR_PROJECT/HARBOR_IMAGE_NAME
-```
-
-For the default configuration, this resolves to:
-
-```txt
-containers.locafire.shop/logarys/documentation
-```
-
-When both `HARBOR_USERNAME` and `HARBOR_PASSWORD` are empty, the release relies on the current Docker credential store. When one is populated, both must be populated, and the script runs `docker login` using `--password-stdin`.
-
-The image exposes HTTP on port `8080` and provides:
-
-- `/healthz` for Kubernetes probes
-- `/version.json` for release metadata
-
-## Helm deployment
-
-The chart is located in:
-
-```txt
-helm/logarys-documentation
-```
-
-It creates:
-
-- a rolling-update `Deployment` with zero unavailable replicas
-- a `ClusterIP` service
-- an HTTPS-only APISIX route
-- an `ApisixTls` resource
-- a cert-manager `Certificate`
-
-The deployment script can also be run independently for an image that has already been pushed:
-
-```bash
-bin/deploy 1.2.3
-```
-
-It reads the kubeconfig, namespace, host, certificate issuer, APISIX class, replica count, timeouts, optional values file, and Harbor image pull secret from `.env`.
-
-### First-deployment TLS bootstrap
-
-An `ApisixTls` resource requires its referenced Kubernetes Secret to already contain the certificate and private key. On a new namespace, cert-manager has not created that Secret yet. To avoid applying an invalid TLS reference and to keep the ACME HTTP challenge reachable, `bin/deploy` uses two phases when the Secret is absent:
-
-1. Helm deploys the application, Service, HTTP `ApisixRoute`, and `Certificate`; `ApisixTls` and HTTP-to-HTTPS redirection remain disabled.
-2. The script waits up to `DEPLOY_CERTIFICATE_TIMEOUT` for `certificate/<release-name>` to become `Ready`, then verifies the TLS Secret.
-3. A final Helm upgrade enables `ApisixTls` and the HTTPS redirect with `--atomic` and `--wait`.
-
-When the TLS Secret already exists, only the final atomic upgrade is required. The `Certificate` explicitly uses `privateKey.rotationPolicy: Always`, avoiding the cert-manager 1.18 default-change warning.
-
-If certificate issuance fails, the script prints the current `Certificate`, `CertificateRequest`, ACME `Order`, and `Challenge` resources. Correct the DNS, issuer, or solver configuration, then rerun the same published version:
-
-```bash
-bin/deploy 0.1.0
-```
-
-Do not run `bin/release` again solely to retry a deployment after its Git tag and image have already been pushed.
-
-## Optional release controls
-
-Skip the mutable `latest` image:
+Skip the mutable image tag or deployment when required:
 
 ```bash
 bin/release --patch --skip-latest
-```
-
-Publish without deploying:
-
-```bash
 bin/release --patch --skip-deploy
 ```
 
-To use an additional Helm values file, set its path in `.env`:
+## Harbor image
 
-```dotenv
-DEPLOY_VALUES_FILE=/absolute/path/to/production.values.yaml
+The image repository is always:
+
+```txt
+HARBOR_REGISTRY/HARBOR_PROJECT/HARBOR_REPOSITORY
 ```
+
+With the default values:
+
+```txt
+containers.locafire.shop/small-project/logarys-docs
+```
+
+The image exposes port `8080` and provides `/healthz` and `/version.json`.
+
+## Deployment process
+
+The chart is located at:
+
+```txt
+deploy/helm/logarys-documentation
+```
+
+Deploy an existing image version with:
+
+```bash
+bin/deploy 0.2.1
+```
+
+The deployment script follows the Small Project process without custom TLS bootstrap logic:
+
+1. check `apisixroutes.apisix.apache.org` and `apisixtlses.apisix.apache.org`;
+2. check `certificates.cert-manager.io` when certificate management is enabled;
+3. check `IngressClass/apisix`;
+4. check and wait for `ClusterIssuer/letsencrypt-prod`;
+5. create the namespace when configured;
+6. create or update the Harbor `docker-registry` Secret from `.env`;
+7. validate the rendered manifests with `helm template`;
+8. run a single `helm upgrade --install --wait --atomic`;
+9. wait for the Deployment rollout and Certificate readiness;
+10. verify HTTPS and the HTTP redirect.
+
+The chart installs these resources together:
+
+- `Deployment` with `maxUnavailable: 0`, startup/readiness/liveness probes, and a read-only runtime filesystem;
+- `Service`;
+- `PodDisruptionBudget`;
+- `ApisixRoute` with HTTP-to-HTTPS redirection;
+- `ApisixTls` referencing the certificate Secret;
+- cert-manager `Certificate` using `letsencrypt-prod`.
+
+## Important prerequisite
+
+Confirm the issuer before deployment:
+
+```bash
+kubectl --kubeconfig=/home/seb/.kube/prod-1.yml \
+  get clusterissuer letsencrypt-prod
+
+kubectl --kubeconfig=/home/seb/.kube/prod-1.yml \
+  wait --for=condition=Ready clusterissuer/letsencrypt-prod --timeout=10m
+```
+
+If the issuer is missing, restore the same cluster-level issuer used by Small Project rather than creating a Logarys-specific issuer in the application repository.
