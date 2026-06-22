@@ -33,6 +33,7 @@ DEPLOY_CERTIFICATE_TIMEOUT=10m
 DEPLOY_VALUES_FILE=
 DEPLOY_APISIX_INGRESS_CLASS=apisix
 DEPLOY_APISIX_PRIORITY=10
+DEPLOY_APISIX_BOOTSTRAP_PRIORITY=-100
 ```
 
 The `.env` file is ignored by Git. Keep production credentials only in that local file or inject them securely when provisioning the working copy.

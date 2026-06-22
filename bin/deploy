@@ -14,9 +14,12 @@ Usage: bin/deploy <version>
 Deploy a previously published Logarys documentation image with Helm.
 The release script invokes this command automatically.
 
-On the first deployment, the script installs the application and Certificate,
-waits for cert-manager to create the TLS Secret, then enables ApisixTls and the
-HTTP-to-HTTPS redirect. Subsequent deployments use a single atomic Helm upgrade.
+On the first deployment, the script:
+  1. validates cert-manager, APISIX CRDs, and the configured ClusterIssuer;
+  2. applies the application, HTTP route, and Certificate without waiting for pods;
+  3. verifies that the Certificate resource exists;
+  4. waits for cert-manager to create the TLS Secret;
+  5. enables ApisixTls and the HTTP-to-HTTPS redirect with an atomic Helm upgrade.
 
 Configuration:
   All Harbor and Kubernetes values are loaded from the project .env file.
@@ -70,66 +73,117 @@ readonly timeout="$DEPLOY_TIMEOUT"
 readonly certificate_timeout="${DEPLOY_CERTIFICATE_TIMEOUT:-10m}"
 readonly ingress_class="$DEPLOY_APISIX_INGRESS_CLASS"
 readonly apisix_priority="$DEPLOY_APISIX_PRIORITY"
+readonly bootstrap_priority="${DEPLOY_APISIX_BOOTSTRAP_PRIORITY:--100}"
 readonly kube_config="${DEPLOY_KUBE_CONFIG:-}"
 readonly values_file="${DEPLOY_VALUES_FILE:-}"
 readonly image_pull_secret="${HARBOR_IMAGE_PULL_SECRET:-}"
 
 [[ "$replicas" =~ ^[1-9][0-9]*$ ]] || fail 'DEPLOY_REPLICAS must be a positive integer in .env.'
-[[ "$apisix_priority" =~ ^[0-9]+$ ]] || fail 'DEPLOY_APISIX_PRIORITY must be a non-negative integer in .env.'
+[[ "$apisix_priority" =~ ^-?[0-9]+$ ]] || fail 'DEPLOY_APISIX_PRIORITY must be an integer in .env.'
+[[ "$bootstrap_priority" =~ ^-?[0-9]+$ ]] || fail 'DEPLOY_APISIX_BOOTSTRAP_PRIORITY must be an integer in .env.'
 [[ "$host" != *'://'* && "$host" == *.* && "$host" != */* ]] || fail 'DEPLOY_HOST must be a hostname without scheme or path in .env.'
 [[ "$timeout" =~ ^[1-9][0-9]*(s|m|h)$ ]] || fail 'DEPLOY_TIMEOUT must use a Kubernetes duration such as 5m or 1h.'
 [[ "$certificate_timeout" =~ ^[1-9][0-9]*(s|m|h)$ ]] || fail 'DEPLOY_CERTIFICATE_TIMEOUT must use a Kubernetes duration such as 10m or 1h.'
 
-helm_base_args=(
+helm_common_args=(
   upgrade
   --install
   "$release_name"
   "$CHART_DIR"
   --namespace "$namespace"
   --create-namespace
-  --wait
   --timeout "$timeout"
   --set-string "fullnameOverride=${release_name}"
   --set-string "image.repository=${image_repository}"
   --set-string "image.tag=${version}"
   --set-string "host=${host}"
+  --set "apisix.enabled=true"
+  --set-string "apisix.ingressClassName=${ingress_class}"
+  --set "tls.enabled=true"
+  --set "tls.createCertificate=true"
   --set-string "tls.secretName=${tls_secret_name}"
   --set-string "tls.clusterIssuer=${cluster_issuer}"
   --set-string "tls.privateKeyRotationPolicy=Always"
   --set "tls.revisionHistoryLimit=1"
-  --set-string "apisix.ingressClassName=${ingress_class}"
-  --set "apisix.priority=${apisix_priority}"
   --set "replicaCount=${replicas}"
 )
 
 kubectl_args=()
 if [[ -n "$kube_config" ]]; then
   [[ -f "$kube_config" ]] || fail "DEPLOY_KUBE_CONFIG does not exist: ${kube_config}"
-  helm_base_args+=(--kubeconfig "$kube_config")
+  helm_common_args+=(--kubeconfig "$kube_config")
   kubectl_args+=(--kubeconfig "$kube_config")
 fi
 
 if [[ -n "$values_file" ]]; then
   [[ -f "$values_file" ]] || fail "DEPLOY_VALUES_FILE does not exist: ${values_file}"
-  helm_base_args+=(--values "$values_file")
+  helm_common_args+=(--values "$values_file")
 fi
 
 if [[ -n "$image_pull_secret" ]]; then
-  helm_base_args+=(--set-string "imagePullSecrets[0].name=${image_pull_secret}")
+  helm_common_args+=(--set-string "imagePullSecrets[0].name=${image_pull_secret}")
 fi
+
+kube() {
+  kubectl "${kubectl_args[@]}" "$@"
+}
+
+cluster_diagnostics() {
+  printf '\nCluster diagnostics:\n' >&2
+  kube get crd certificates.cert-manager.io apisixroutes.apisix.apache.org apisixtls.apisix.apache.org 2>/dev/null >&2 || true
+  kube get clusterissuer "$cluster_issuer" -o wide 2>/dev/null >&2 || true
+  kube describe clusterissuer "$cluster_issuer" 2>/dev/null >&2 || true
+}
 
 certificate_diagnostics() {
   printf '\nCertificate diagnostics:\n' >&2
-  kubectl "${kubectl_args[@]}" -n "$namespace" get certificate,certificaterequest,order,challenge 2>/dev/null >&2 || true
-  kubectl "${kubectl_args[@]}" -n "$namespace" describe "certificate/${release_name}" 2>/dev/null >&2 || true
+  kube -n "$namespace" get certificate,certificaterequest,order,challenge,ingress,pod,service 2>/dev/null >&2 || true
+  kube -n "$namespace" describe "certificate/${release_name}" 2>/dev/null >&2 || true
+
+  local challenge_names
+  challenge_names="$(kube -n "$namespace" get challenge -o name 2>/dev/null || true)"
+  if [[ -n "$challenge_names" ]]; then
+    while IFS= read -r challenge_name; do
+      [[ -n "$challenge_name" ]] || continue
+      kube -n "$namespace" describe "$challenge_name" 2>/dev/null >&2 || true
+    done <<< "$challenge_names"
+  fi
+}
+
+require_crd() {
+  local crd_name="$1"
+  kube get crd "$crd_name" >/dev/null 2>&1 || {
+    cluster_diagnostics
+    fail "Required Kubernetes CRD is missing: ${crd_name}"
+  }
+}
+
+validate_cluster_prerequisites() {
+  require_crd certificates.cert-manager.io
+  require_crd apisixroutes.apisix.apache.org
+  require_crd apisixtls.apisix.apache.org
+
+  kube get clusterissuer "$cluster_issuer" >/dev/null 2>&1 || {
+    cluster_diagnostics
+    fail "ClusterIssuer does not exist: ${cluster_issuer}"
+  }
+
+  local issuer_ready
+  issuer_ready="$(kube get clusterissuer "$cluster_issuer" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+  [[ "$issuer_ready" == 'True' ]] || {
+    cluster_diagnostics
+    fail "ClusterIssuer is not Ready: ${cluster_issuer}"
+  }
 }
 
 run_final_deployment() {
-  local -a args=("${helm_base_args[@]}")
+  local -a args=("${helm_common_args[@]}")
   args+=(
+    --wait
     --atomic
     --set "tls.apisixTlsEnabled=true"
     --set "apisix.redirectHttpToHttps=true"
+    --set "apisix.priority=${apisix_priority}"
   )
 
   info 'Applying final HTTPS deployment'
@@ -142,20 +196,34 @@ info "Helm release: ${release_name}"
 info "Namespace: ${namespace}"
 info "HTTPS host: ${host}"
 
-if kubectl "${kubectl_args[@]}" -n "$namespace" get secret "$tls_secret_name" >/dev/null 2>&1; then
+validate_cluster_prerequisites
+
+if kube -n "$namespace" get secret "$tls_secret_name" >/dev/null 2>&1; then
   info "TLS Secret already exists: ${namespace}/${tls_secret_name}"
   run_final_deployment
 else
-  info "TLS Secret not found; bootstrapping certificate without ApisixTls"
-  bootstrap_args=("${helm_base_args[@]}")
+  info 'TLS Secret not found; applying certificate bootstrap resources'
+  bootstrap_args=("${helm_common_args[@]}")
   bootstrap_args+=(
     --set "tls.apisixTlsEnabled=false"
     --set "apisix.redirectHttpToHttps=false"
+    --set "apisix.priority=${bootstrap_priority}"
   )
+
+  # Do not use --wait here. The Certificate and HTTP route must be created first,
+  # independently of application pod readiness, so cert-manager can start ACME.
   helm "${bootstrap_args[@]}"
 
+  if ! kube -n "$namespace" get "certificate/${release_name}" >/dev/null 2>&1; then
+    certificate_diagnostics
+    fail "Helm completed but Certificate was not created: ${namespace}/${release_name}"
+  fi
+
+  info "Certificate created: ${namespace}/${release_name}"
+  kube -n "$namespace" get "certificate/${release_name}" -o wide || true
   info "Waiting up to ${certificate_timeout} for certificate/${release_name}"
-  if ! kubectl "${kubectl_args[@]}" -n "$namespace" wait \
+
+  if ! kube -n "$namespace" wait \
     --for=condition=Ready \
     "certificate/${release_name}" \
     --timeout "$certificate_timeout"; then
@@ -163,8 +231,10 @@ else
     fail "Certificate did not become ready. Fix cert-manager/DNS/ACME, then rerun: bin/deploy ${version}"
   fi
 
-  kubectl "${kubectl_args[@]}" -n "$namespace" get secret "$tls_secret_name" >/dev/null \
-    || fail "Certificate is Ready but TLS Secret is missing: ${namespace}/${tls_secret_name}"
+  kube -n "$namespace" get secret "$tls_secret_name" >/dev/null 2>&1 || {
+    certificate_diagnostics
+    fail "Certificate is Ready but TLS Secret is missing: ${namespace}/${tls_secret_name}"
+  }
 
   info "TLS Secret created: ${namespace}/${tls_secret_name}"
   run_final_deployment
